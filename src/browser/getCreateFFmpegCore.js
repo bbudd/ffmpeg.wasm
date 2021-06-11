@@ -16,28 +16,53 @@ const toBlobURL = async (url, mimeType) => {
   return blobURL;
 };
 
-module.exports = async ({ corePath: _corePath }) => {
+module.exports = async ({ corePath: _corePath, isWorker = false }) => {
   if (typeof _corePath !== 'string') {
     throw Error('corePath should be a string!');
   }
-  const coreRemotePath = resolveURL(_corePath);
-  const corePath = await toBlobURL(
-    coreRemotePath,
-    'application/javascript',
-  );
-  const wasmPath = await toBlobURL(
-    coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.wasm'),
-    'application/wasm',
-  );
-  const workerPath = await toBlobURL(
-    coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.worker.js'),
-    'application/javascript',
-  );
-  if (typeof createFFmpegCore === 'undefined') {
-    return new Promise((resolve) => {
-      const script = document.createElement('script');
-      const eventHandler = () => {
-        script.removeEventListener('load', eventHandler);
+
+  const coreRemotePath = isWorker ? _corePath : resolveURL(_corePath)
+  let corePath, wasmPath, workerPath
+
+  if (!isWorker) {
+    corePath = await toBlobURL(
+      coreRemotePath,
+      'application/javascript',
+    );
+    wasmPath = await toBlobURL(
+      coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.wasm'),
+      'application/wasm',
+    );
+    workerPath = await toBlobURL(
+      coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.worker.js'),
+      'application/javascript',
+    );
+    if (typeof createFFmpegCore === 'undefined') {
+      return new Promise((resolve) => {
+        const script = document.createElement('script');
+        const eventHandler = () => {
+          script.removeEventListener('load', eventHandler);
+          log('info', 'ffmpeg-core.js script loaded');
+          resolve({
+            createFFmpegCore,
+            corePath,
+            wasmPath,
+            workerPath,
+          });
+        };
+        script.src = corePath;
+        script.type = 'text/javascript';
+        script.addEventListener('load', eventHandler);
+        document.getElementsByTagName('head')[0].appendChild(script);
+      });
+    }
+  } else {
+    corePath = await fetch(coreRemotePath);
+    wasmPath = await fetch(coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.wasm'));
+    workerPath = await fetch(coreRemotePath.replace('ffmpeg-core.js', 'ffmpeg-core.worker.js'));
+    if (typeof createFFmpegCore === 'undefined') {
+      return new Promise(async (resolve) => {
+        await self.importScripts(coreRemotePath);
         log('info', 'ffmpeg-core.js script loaded');
         resolve({
           createFFmpegCore,
@@ -45,18 +70,8 @@ module.exports = async ({ corePath: _corePath }) => {
           wasmPath,
           workerPath,
         });
-      };
-      script.src = corePath;
-      script.type = 'text/javascript';
-      script.addEventListener('load', eventHandler);
-      document.getElementsByTagName('head')[0].appendChild(script);
-    });
+      });
+    }
   }
   log('info', 'ffmpeg-core.js script is loaded already');
-  return Promise.resolve({
-    createFFmpegCore,
-    corePath,
-    wasmPath,
-    workerPath,
-  });
 };
