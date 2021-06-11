@@ -143,32 +143,61 @@ ffmpeg.setLogger(({ type, message }) => {
 
 ### ffmpeg.setProgress(progress)
 
-Progress handler to get current progress of ffmpeg command.
+Adds a progress handler to get current progress of any subsequent ffmpeg command.
 
 **Arguments**
 
 - `progress` a function to handle progress info
 
+**Callback parameters**
+
+- callback is called with a `progress` object, which contains:
+  - ratio (always) - ratio of progress (floating point number, 0-1)
+  - duration (when ffmpeg emits a duration) - duration of file (may be called multiple times)
+  - time (when ffmpeg emits a `frame` or `size` - absolute time)
+
+**Notes:**
+-
+
 **Examples:**
 
 ```javascript
+ffmpeg.setProgress(({ ratio, time, duration }) => {
+  if (time != null) {
+    console.log(`current time: ${time}. As a ratio of duration: ${ratio}`);
+  }
+  if (duration != null) {
+    console.log(`this is working on a movie that is ${duration} long. Current ratio is ${ratio}`);
+  }
+});
+```
 
-ffmpeg.setProgress(({ ratio }) => {
-  console.log(ratio);
-  /*
-   * ratio is a float number between 0 to 1.
-   */
+```javascript
+// Special note: when adding multiple files like within
+// the `concat` folter, `duration` will fire twice, and
+// `ratio`, as fired, will be wrong because of how the
+// closure stores its duration. It will be up to you to
+// write code which calculates the correct ratio.
+let duration = 0;
+ffmpeg.setProgress(progress => {
+  if (progress.duration != null) {
+    duration += progress.duration; // if I expect multiple durations, I can add them
+  }
+  if (progress.time != null) {
+    const ratio = progress.time / duration; // I can ignore `info.ratio` here, since I know it's wrong
+    doSomethingWith(ratio);
+  }
 });
 ```
 
 <a name="fetch-file"></a>
 
 ### fetchFile(media): Promise
-   
+
 Helper function for fetching files from various resource.
 
 Sometimes the video/audio file you want to process may located in a remote URL and somewhere in your local file system.
-   
+
 This helper function helps you to fetch to file and return an Uint8Array variable for ffmpeg.wasm to consume.
 
 **Arguments**
